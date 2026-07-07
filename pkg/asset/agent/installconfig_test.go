@@ -1008,7 +1008,7 @@ platform:
 pullSecret: "{\"auths\":{\"example.com\":{\"auth\":\"c3VwZXItc2VjcmV0Cg==\"}}}"
 `,
 			expectedFound: false,
-			expectedError: "invalid install-config configuration: platform: Invalid value: \"baremetal\": CPU architecture \"s390x\" only supports platform \"none\".",
+			expectedError: "invalid install-config configuration: platform: Invalid value: \"baremetal\": CPU architecture \"s390x\" only supports platform \"none\" or \"external\".",
 		},
 		{
 			name: "generic platformName for external platform",
@@ -2263,6 +2263,125 @@ pullSecret: "{\"auths\":{\"example.com\":{\"auth\":\"c3VwZXItc2VjcmV0Cg==\"}}}"
 				FeatureSet:   configv1.CustomNoUpgrade,
 				FeatureGates: []string{"DualReplica=true"},
 			},
+		},
+		{
+			name: "valid s390x external ibmz platform with arbiter",
+			data: `
+apiVersion: v1
+metadata:
+  name: test-cluster
+baseDomain: test-domain
+networking:
+  networkType: OVNKubernetes
+compute:
+  - architecture: s390x
+    hyperthreading: Enabled
+    name: worker
+    platform: {}
+    replicas: 0
+controlPlane:
+  architecture: s390x
+  hyperthreading: Enabled
+  name: master
+  platform: {}
+  replicas: 2
+arbiter:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: arbiter
+  platform: {}
+  replicas: 1
+platform:
+  external:
+    platformName: ibmz
+    cloudControllerManager: External
+pullSecret: "{\"auths\":{\"example.com\":{\"auth\":\"c3VwZXItc2VjcmV0Cg==\"}}}"
+`,
+			expectedFound: true,
+			expectedConfig: &types.InstallConfig{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: types.InstallConfigVersion,
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cluster",
+				},
+				AdditionalTrustBundlePolicy: types.PolicyProxyOnly,
+				BaseDomain:                  "test-domain",
+				Networking: &types.Networking{
+					MachineNetwork: []types.MachineNetworkEntry{
+						{CIDR: *ipnet.MustParseCIDR("10.0.0.0/16")},
+					},
+					NetworkType:    "OVNKubernetes",
+					ServiceNetwork: []ipnet.IPNet{*ipnet.MustParseCIDR("172.30.0.0/16")},
+					ClusterNetwork: []types.ClusterNetworkEntry{
+						{
+							CIDR:       *ipnet.MustParseCIDR("10.128.0.0/14"),
+							HostPrefix: 23,
+						},
+					},
+				},
+				ControlPlane: &types.MachinePool{
+					Name:           "master",
+					Replicas:       pointer.Int64(2),
+					Hyperthreading: types.HyperthreadingEnabled,
+					Architecture:   types.ArchitectureS390X,
+				},
+				Compute: []types.MachinePool{
+					{
+						Name:           "worker",
+						Replicas:       pointer.Int64(0),
+						Hyperthreading: types.HyperthreadingEnabled,
+						Architecture:   types.ArchitectureS390X,
+					},
+				},
+				Arbiter: &types.MachinePool{
+					Name:           "arbiter",
+					Replicas:       pointer.Int64(1),
+					Hyperthreading: types.HyperthreadingEnabled,
+					Architecture:   types.ArchitectureAMD64,
+				},
+				Platform: types.Platform{
+					External: &external.Platform{
+						PlatformName:           ExternalPlatformNameIBMZ,
+						CloudControllerManager: external.CloudControllerManagerTypeExternal,
+					},
+				},
+				PullSecret: `{"auths":{"example.com":{"auth":"c3VwZXItc2VjcmV0Cg=="}}}`,
+				Publish:    types.ExternalPublishingStrategy,
+			},
+		},
+		{
+			name: "invalid s390x ibmz platform with arbiter - missing CCM",
+			data: `
+apiVersion: v1
+metadata:
+  name: test-cluster
+baseDomain: test-domain
+compute:
+  - architecture: s390x
+    hyperthreading: Enabled
+    name: worker
+    platform: {}
+    replicas: 0
+controlPlane:
+  architecture: s390x
+  hyperthreading: Enabled
+  name: master
+  platform: {}
+  replicas: 2
+arbiter:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: arbiter
+  platform: {}
+  replicas: 1
+platform:
+  external:
+    platformName: ibmz
+pullSecret: "{\"auths\":{\"example.com\":{\"auth\":\"c3VwZXItc2VjcmV0Cg==\"}}}"
+`,
+			expectedFound: false,
+			expectedError: `invalid install-config configuration: platform.external.cloudControllerManager: Invalid value: "": When using external ibmz platform, platform.external.cloudControllerManager must be set to External`,
 		},
 	}
 	for _, tc := range cases {

@@ -224,6 +224,18 @@ func (a *OptionalInstallConfig) validateSupportedArchs(installConfig *types.Inst
 		}
 	}
 
+	if installConfig.Arbiter != nil {
+		fieldPath := field.NewPath("arbiter", "architecture")
+		switch string(installConfig.Arbiter.Architecture) {
+		case types.ArchitectureAMD64:
+		case types.ArchitectureARM64:
+		case types.ArchitecturePPC64LE:
+		case types.ArchitectureS390X:
+		default:
+			allErrs = append(allErrs, field.NotSupported(fieldPath, installConfig.Arbiter.Architecture, []string{types.ArchitectureAMD64, types.ArchitectureARM64, types.ArchitecturePPC64LE, types.ArchitectureS390X}))
+		}
+	}
+
 	return allErrs
 }
 func (a *OptionalInstallConfig) validateTwoNodeConfiguration(installConfig *types.InstallConfig) field.ErrorList {
